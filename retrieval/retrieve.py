@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 from retrieval.bm25 import BM25Retriever
 from retrieval.dense import DenseRetriever
 
+# 索引文件完整性检查清单
 INDEX_FILES = [
     "bm25/loc", "bm25/content",
     "bm25/tokenized_loc.json", "bm25/tokenized_content.json",
@@ -20,6 +21,8 @@ def _check_index_complete(index_dir: str) -> bool:
 
 
 def _save_metadatas(index_dir: str, metadatas: List[Dict]):
+    """将 metadatas 持久化到磁盘，供后续加载索引时使用。"""
+    # 确保索引目录存在 -> 序列化 -> 写文件
     d = Path(index_dir)
     d.mkdir(parents=True, exist_ok=True)
     (d / "metadatas.json").write_text(
@@ -27,6 +30,10 @@ def _save_metadatas(index_dir: str, metadatas: List[Dict]):
 
 
 def _load_metadatas(index_dir: str) -> List[Dict]:
+    """从磁盘加载 metadatas。"""
+    #   1. Path(index_dir) / "metadatas.json" → 拼出文件路径
+    #   2. .read_text(encoding="utf-8") → 读取整个文件为字符串
+    #   3. json.loads(...) → 把 JSON 字符串反序列化回 Python 列表
     return json.loads((Path(index_dir) / "metadatas.json").read_text(encoding="utf-8"))
 
 
@@ -40,6 +47,7 @@ class Retriever:
         self.dense_recall_k = config.get("dense_recall_k", 10)
         self.rrf_method = config.get("rrf_method", "4way")
         self.rrf_k = config.get("rrf_k", 60)
+        self.rrf_top_k = config.get("rrf_top_k", 15)
         self.rrf_2way_axis = config.get("rrf_2way_axis", "by_index")
 
         index_dir = config.get("index_dir")
@@ -89,6 +97,7 @@ class Retriever:
         obj.dense_recall_k = config.get("dense_recall_k", 10)
         obj.rrf_method = config.get("rrf_method", "4way")
         obj.rrf_k = config.get("rrf_k", 60)
+        obj.rrf_top_k = config.get("rrf_top_k", 15)
         obj.rrf_2way_axis = config.get("rrf_2way_axis", "by_index")
 
         obj.bm25 = BM25Retriever.load(index_dir, metadatas)
@@ -167,7 +176,7 @@ class Retriever:
             output.append(r)
 
         output.sort(key=lambda x: x["score"], reverse=True)
-        return output
+        return output[:self.rrf_top_k]
 
     def _fuse_2way(self, bm25_results: List[Dict],
                    dense_results: List[Dict], axis: str = "by_index") -> List[Dict]:
@@ -215,4 +224,4 @@ class Retriever:
             output.append(r)
 
         output.sort(key=lambda x: x["score"], reverse=True)
-        return output
+        return output[:self.rrf_top_k]

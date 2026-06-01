@@ -13,13 +13,13 @@ BM25_B = 0.75
 BM25_BACKEND = "numpy"
 BM25_TOP_K = 5
 
-# 双路召回：定位索引和内容索引各召回 top K 条，合并去重后送入 Reranker
-BM25_RECALL_K = 10
+# 双路召回：定位索引和内容索引各自最多召回 top K 条
+BM25_RECALL_K = 20
 
 # ==================== Dense Retrieval ====================
+DENSE_RECALL_K = 20
 DENSE_MODEL_PATH = "/home/moga/models/embedding/Qwen3-Embedding-0.6B"
 DENSE_DEVICE = "cuda"
-DENSE_RECALL_K = 10
 DENSE_BATCH_SIZE = 32
 
 # ==================== RRF 融合 ====================
@@ -28,6 +28,7 @@ DENSE_BATCH_SIZE = 32
 #   "2way"  — 两路分组 RRF，分组方向由 RRF_2WAY_AXIS 决定
 RRF_METHOD = "4way"
 RRF_K = 60
+RRF_TOP_K = 15 # RRF 融合然后截断输出给Reranker的最终条数，默认为15，过大可能增加精排负担，过小可能丢失有效候选
 
 # RRF_2WAY_AXIS: 2-way 模式的融合轴（仅当 RRF_METHOD = "2way" 时生效）
 #   "by_index"     — 按索引类型分组：定位组(BM25+Dense) RRF → 前5, 内容组(BM25+Dense) RRF → 前5

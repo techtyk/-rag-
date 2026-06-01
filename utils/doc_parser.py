@@ -39,7 +39,6 @@ def parse_regulation(path: str) -> Tuple[List[str], List[str], List[Dict[str, An
         title = node.get("title", "").strip()
         content = node.get("content", "").strip()
         has_children = bool(node.get("children"))
-
         # 章节节点
         if content and has_children:
             chapter_name = title if title else content
@@ -60,7 +59,7 @@ def parse_regulation(path: str) -> Tuple[List[str], List[str], List[Dict[str, An
                 "content": content
             })
 
-        for child in node.get("children", []):
+        for child in node.get("children", []): #如果没有children，get会返回空列表，不会进入循环，此时自然终止递归
             traverse(child, current_chapter, file_name)
 
     # 遍历每个 JSON 文件
@@ -77,3 +76,14 @@ def parse_regulation(path: str) -> Tuple[List[str], List[str], List[Dict[str, An
     return docs_index_loc, docs_index_content, metadatas
 
 
+if __name__ == "__main__":
+    # 测试解析函数
+    test_path = "/home/moga/project/dense_training/app/data/knowledge_base"
+    locs, contents, metas = parse_regulation(test_path)
+    print("定位索引示例:", locs[:3])
+    print("=" * 50)
+    print("\n" * 2)
+    print("内容索引示例:", contents[:3])
+    print("=" * 50)
+    print("\n" * 2)
+    print("元数据示例:", metas[:3])

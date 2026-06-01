@@ -15,7 +15,7 @@ import random
 from config import (KB_PATH, QA_PATH, INDEX_DIR, BM25_K1, BM25_B, BM25_BACKEND, BM25_RECALL_K,
                     RERANK_TOP_K, RERANKER_MODEL, RERANKER_MODEL_PATH,
                     DENSE_MODEL_PATH, DENSE_DEVICE, DENSE_RECALL_K,
-                    RRF_METHOD, RRF_K, RRF_2WAY_AXIS)
+                    RRF_METHOD, RRF_K, RRF_TOP_K, RRF_2WAY_AXIS)
 from utils.doc_parser import parse_regulation
 from retrieval.retrieve import Retriever
 from rerank.reranker import RERANKER_REGISTRY
@@ -68,6 +68,7 @@ class TestE2EPipeline(unittest.TestCase):
                 "dense_recall_k": DENSE_RECALL_K,
                 "rrf_method": RRF_METHOD,
                 "rrf_k": RRF_K,
+                "rrf_top_k": RRF_TOP_K,
                 "rrf_2way_axis": RRF_2WAY_AXIS,
             },
         )
@@ -144,9 +145,9 @@ class TestE2EPipeline(unittest.TestCase):
                     self.assertIn(r["source"], {"location", "content", "both"})
 
     def test_top_k_respected(self):
-        """双路召回各用 top_k，四路总结果上限为 4*top_k。"""
+        """RRF 融合后截断到 rrf_top_k 条。"""
         results = self.retriever.retrieve(self.sample_questions[0]["question"], top_k=3)
-        self.assertLessEqual(len(results), 12)
+        self.assertLessEqual(len(results), RRF_TOP_K)
 
     # ---- 辅助人工审核：打印结果摘要 ----
 
