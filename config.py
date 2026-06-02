@@ -20,7 +20,7 @@ BM25_RECALL_K = 20
 DENSE_RECALL_K = 20
 DENSE_MODEL_PATH = "/home/moga/models/embedding/Qwen3-Embedding-0.6B"
 DENSE_DEVICE = "cuda"
-DENSE_BATCH_SIZE = 32
+DENSE_BATCH_SIZE = 4
 
 # ==================== RRF 融合 ====================
 # RRF_METHOD: 融合模式

@@ -22,7 +22,7 @@ class BM25Retriever:
     @classmethod
     def load(cls, index_dir: str, metadatas: List[Dict]) -> "BM25Retriever":
         """从磁盘加载已保存的 BM25 索引，跳过分词和构建。"""
-        obj = cls.__new__(cls)
+        obj = cls.__new__(cls) # 绕过 __init__，直接创建实例并赋属性
         obj.metadatas = metadatas
         d = Path(index_dir) / "bm25"
         obj.tokenized_loc = json.loads((d / "tokenized_loc.json").read_text(encoding="utf-8"))
@@ -50,29 +50,30 @@ class BM25Retriever:
             retriever = bm25s.BM25(method="lucene", k1=k1, b=b, backend=backend)
             retriever.index(tokenized_corpus)
             print(f"BM25 {label}索引构建完成，后端：{backend}，文档数：{len(tokenized_corpus)}")
-        except Exception as e:
+        except (ImportError, RuntimeError, ValueError) as e:
             print(f"无法使用 {backend}：{e}，切换到 numpy")
             retriever = bm25s.BM25(method="lucene", k1=k1, b=b, backend="numpy")
             retriever.index(tokenized_corpus)
             print(f"BM25 {label}索引构建完成，后端：numpy，文档数：{len(tokenized_corpus)}")
         return retriever
 
-    def search(self, query: str, top_k: int = 10) -> List[Dict]:
+    def search(self, query: str, top_k: int = 10) -> List[Dict]: # top_k 是每路最多返回的条数；返回值是字典列表，每个字典是一条命中文档
         query_tokens = tokenize_for_query(query)
         query_tokens_2d = [query_tokens]
         k = min(top_k, len(self.metadatas))
 
-        # 收集双路分数，同一 chunk 可能被两个索引同时命中
-        doc_scores = {}  # idx -> {source: score}
-        doc_matched = {}  # idx -> matched_tokens
+        # 初始化收集字典：收集双路分数，同一 chunk 可能被两个索引同时命中
+        doc_scores = {}  # key 是文档索引（0, 1, 2...），value 是各路的分数。比如 {0: {"location": 0.188, "content": 0.053}}
+        doc_matched = {}  # key 是文档索引，value 是该文档匹配到的查询词列表。比如 {0: ["第一章"]}
         for retriever, tokenized_corpus, source in [
             (self.retriever_loc, self.tokenized_loc, "location"),
             (self.retriever_content, self.tokenized_content, "content"),
         ]:
+            #breakpoint()
             results, scores = retriever.retrieve(query_tokens_2d, k=k)
             for i in range(len(results[0])):
                 score_val = float(scores[0, i])
-                if score_val <= 0:
+                if score_val <= 0: # BM25 分数如果不大于 0视为无关文档，不计入top K结果
                     continue
                 doc_idx = int(results[0, i])
                 doc_scores.setdefault(doc_idx, {})[source] = score_val
@@ -93,3 +94,17 @@ class BM25Retriever:
 
         output.sort(key=lambda x: x["score"], reverse=True)
         return output
+
+
+if __name__ == "__main__":
+    # 简单测试
+    docs_loc = ["doc1 第一章 第一条", "doc2 第一章 第二条", "doc3 第二章 第一条"]
+    docs_content = ["这是第一条的内容", "这是第二条的内容", "这是第三条的内容"]
+    metadatas = [{"file_name": "doc1", "chapter": "第一章", "article_no": "第一条"},
+                 {"file_name": "doc2", "chapter": "第一章", "article_no": "第二条"},
+                 {"file_name": "doc3", "chapter": "第二章", "article_no": "第一条"}]
+    retriever = BM25Retriever(docs_loc, docs_content, metadatas)
+    query = "第一章的内容"
+    results = retriever.search(query)
+    for r in results:
+        print(r)

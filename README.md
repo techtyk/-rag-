@@ -86,7 +86,7 @@ conda activate retrieval
 python server.py
 ```
 
-服务启动时会加载模型（首次构建索引约 5 分钟，后续约 30 秒），就绪后监听 `0.0.0.0:49188`（端口可在 `config.py` 的 `SERVER_PORT` 中修改）。
+服务启动时会加载模型（首次构建索引约 5 分钟，后续约 30 秒），就绪后监听 `0.0.0.0:18400`（端口可在 `config.py` 的 `SERVER_PORT` 中修改）。
 
 **端点：**
 
@@ -151,12 +151,12 @@ python server.py
 
 ```bash
 # 简洁模式
-curl -X POST http://<IP>:49188/query \
+curl -X POST http://<IP>:18400/query \
   -H "Content-Type: application/json" \
   -d '{"query": "安全生产责任"}'
 
 # 自定义 top_k + debug 模式
-curl -X POST http://<IP>:49188/query \
+curl -X POST http://<IP>:18400/query \
   -H "Content-Type: application/json" \
   -d '{"query": "安全生产责任", "top_k": 3, "debug": true}'
 ```
@@ -234,4 +234,4 @@ conda run -n retrieval python -m scripts.report_tool.system_profile
 | 配置项 | 默认值 | 说明 |
 |--------|-------|------|
 | `SERVER_HOST` | `"0.0.0.0"` | 监听地址 |
-| `SERVER_PORT` | `49188` | 监听端口 |
+| `SERVER_PORT` | `18400` | 监听端口 |
