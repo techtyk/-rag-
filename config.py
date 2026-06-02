@@ -45,3 +45,7 @@ RERANKER_DEVICE = "cuda"
 
 # Reranker 精排后最终输出条数
 RERANK_TOP_K = 5
+
+# ==================== API 服务 ====================
+SERVER_HOST = "0.0.0.0"
+SERVER_PORT = 18400

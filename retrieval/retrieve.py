@@ -40,15 +40,19 @@ def _load_metadatas(index_dir: str) -> List[Dict]:
 class Retriever:
     """统一检索入口，管理 BM25 + Dense 的多路召回与 RRF 融合。"""
 
-    def __init__(self, docs_loc: List[str], docs_content: List[str],
-                 metadatas: List[Dict], config: dict):
-        self.metadatas = metadatas
+    def _apply_config(self, config: dict):
+        """从 config dict 中读取并设置检索参数（供 __init__ 和 load 共用）。"""
         self.bm25_recall_k = config.get("bm25_recall_k", 10)
         self.dense_recall_k = config.get("dense_recall_k", 10)
         self.rrf_method = config.get("rrf_method", "4way")
         self.rrf_k = config.get("rrf_k", 60)
         self.rrf_top_k = config.get("rrf_top_k", 15)
         self.rrf_2way_axis = config.get("rrf_2way_axis", "by_index")
+
+    def __init__(self, docs_loc: List[str], docs_content: List[str],
+                 metadatas: List[Dict], config: dict):
+        self.metadatas = metadatas
+        self._apply_config(config)
 
         index_dir = config.get("index_dir")
 
@@ -93,12 +97,7 @@ class Retriever:
         metadatas = _load_metadatas(index_dir)
         obj = cls.__new__(cls)
         obj.metadatas = metadatas
-        obj.bm25_recall_k = config.get("bm25_recall_k", 10)
-        obj.dense_recall_k = config.get("dense_recall_k", 10)
-        obj.rrf_method = config.get("rrf_method", "4way")
-        obj.rrf_k = config.get("rrf_k", 60)
-        obj.rrf_top_k = config.get("rrf_top_k", 15)
-        obj.rrf_2way_axis = config.get("rrf_2way_axis", "by_index")
+        obj._apply_config(config)
 
         obj.bm25 = BM25Retriever.load(index_dir, metadatas)
 
@@ -120,8 +119,8 @@ class Retriever:
         # BM25 双路召回
         bm25_results = self.bm25.search(query, top_k=_k)
 
-        if not self.dense:
-            return bm25_results
+        if not self.dense:# 注意__init__中提示了self.dense 可能为 None（未配置 dense_model_path），此时仅使用 BM25 结果         
+            return self._fuse_bm25_only(bm25_results)
 
         # Dense 双路召回
         dense_results = self.dense.search(query, top_k=_k)
@@ -130,6 +129,30 @@ class Retriever:
             return self._fuse_2way(bm25_results, dense_results, self.rrf_2way_axis)
         else:
             return self._fuse_4way(bm25_results, dense_results)
+
+    def _fuse_bm25_only(self, bm25_results: List[Dict]) -> List[Dict]:
+        """BM25-only 模式：对定位/内容两路做 RRF 融合、去重、截断。"""
+        bm25_loc = [r for r in bm25_results if "location" in r.get("scores", {})]
+        bm25_loc.sort(key=lambda x: x["scores"].get("location", 0), reverse=True)
+        bm25_cont = [r for r in bm25_results if "content" in r.get("scores", {})]
+        bm25_cont.sort(key=lambda x: x["scores"].get("content", 0), reverse=True)
+
+        rrf_scores = self._rrf_score([bm25_loc, bm25_cont])
+
+        seen = {}
+        for r in bm25_results:
+            key = (r["file_name"], r["chapter"], r["article_no"])
+            if key not in seen:
+                seen[key] = r
+
+        output = []
+        for key, rrf_s in rrf_scores.items():
+            r = seen[key].copy()
+            r["score"] = rrf_s
+            output.append(r)
+
+        output.sort(key=lambda x: x["score"], reverse=True)
+        return output[:self.rrf_top_k]
 
     def _rrf_score(self, ranked_lists: List[List[Dict]]) -> Dict[tuple, float]:
         """对多路排序结果计算 RRF 分数。返回 {doc_key: rrf_score}。"""
