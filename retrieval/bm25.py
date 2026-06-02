@@ -64,35 +64,32 @@ class BM25Retriever:
 
         # 初始化收集字典：收集双路分数，同一 chunk 可能被两个索引同时命中
         doc_scores = {}  # key 是文档索引（0, 1, 2...），value 是各路的分数。比如 {0: {"location": 0.188, "content": 0.053}}
-        doc_matched = {}  # key 是文档索引，value 是该文档匹配到的查询词列表。比如 {0: ["第一章"]}
+        doc_matched = {}  # key 是文档索引，value 是各路匹配词。比如 {0: {"location": ["第一章"], "content": ["内容"]}}
         for retriever, tokenized_corpus, source in [
             (self.retriever_loc, self.tokenized_loc, "location"),
             (self.retriever_content, self.tokenized_content, "content"),
         ]:
-            #breakpoint()
             results, scores = retriever.retrieve(query_tokens_2d, k=k)
             for i in range(len(results[0])):
                 score_val = float(scores[0, i])
-                if score_val <= 0: # BM25 分数如果不大于 0视为无关文档，不计入top K结果
+                if score_val <= 0:
                     continue
                 doc_idx = int(results[0, i])
                 doc_scores.setdefault(doc_idx, {})[source] = score_val
-                if doc_idx not in doc_matched:
-                    doc_token_set = set(tokenized_corpus[doc_idx])
-                    doc_matched[doc_idx] = sorted(t for t in query_tokens if t in doc_token_set)
+                doc_token_set = set(tokenized_corpus[doc_idx])
+                matched = sorted(t for t in query_tokens if t in doc_token_set)
+                doc_matched.setdefault(doc_idx, {})[source] = matched
 
         output = []
         for idx, score_dict in doc_scores.items():
             sources = list(score_dict.keys())
             output.append({
-                "score": max(score_dict.values()),
                 "scores": score_dict,
                 "source": sources[0] if len(sources) == 1 else "both",
-                "matched_tokens": doc_matched.get(idx, []),
+                "matched_tokens": doc_matched.get(idx, {}),
                 **self.metadatas[idx],
             })
 
-        output.sort(key=lambda x: x["score"], reverse=True)
         return output
 
 

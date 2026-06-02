@@ -122,7 +122,7 @@ python server.py
       "rerank_score": 0.993,
       "rrf_score": 0.031,
       "source": "content",
-      "matched_tokens": ["安全", "生产", "责任"],
+      "matched_tokens": {"location": ["安全", "责任"], "content": ["安全", "生产"]},
       "file_name": "安徽省实施《中华人民共和国道路交通安全法》办法(修正)",
       "chapter": "第二章　交通安全管理责任",
       "article_no": "第六条",

@@ -228,7 +228,7 @@ def generate_html(results, phase1_time, phase2_time, total_time):
                 f'\n            <td>{r.get("source", "")}</td>'
                 f'\n            <td>{r.get("file_name", "")} · {r.get("chapter", "")} · {r.get("article_no", "")}</td>'
                 f'\n            <td class="content-cell" title="{content}">{content_short}</td>'
-                f'\n            <td>{r.get("matched_tokens", "")}</td>'
+                f'\n            <td>{r.get("matched_tokens", {})}</td>'
             )
 
             if rank == 0:

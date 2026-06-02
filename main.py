@@ -73,8 +73,9 @@ def rag_pipeline():
         print(f"\n查询：「{query}」召回 {len(candidates)} 条，精排展示前 {len(display_results)} 条")
         print("-" * 80)
         for i, r in enumerate(display_results, 1):
+            matched_str = " | ".join(f"{k}={v}" for k, v in r['matched_tokens'].items()) if r['matched_tokens'] else "无"
             print(f"【第 {i} 名】Rerank={r['rerank_score']:.4f} | RRF={r['score']:.6f} | "
-                  f"来源：{r['source']} | 命中词元：{r['matched_tokens']}")
+                  f"来源：{r['source']} | 匹配词元：{matched_str}")
             print(f"  出处：{r['file_name']} · {r['chapter']} · {r['article_no']}")
             content = r['content']
             print(f"  内容：{content[:200]}{'...' if len(content) > 200 else ''}")

@@ -95,7 +95,7 @@ def fuse_4way(bm25_results, dense_results, rrf_k, top_n):
             "article_no": r["article_no"],
             "content": r["content"],
             "scores": r.get("scores", {}),
-            "matched_tokens": r.get("matched_tokens", []),
+            "matched_tokens": r.get("matched_tokens", {}),
             "source": r.get("source", ""),
         })
     output.sort(key=lambda x: x["rrf_score"], reverse=True)

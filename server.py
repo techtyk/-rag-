@@ -77,7 +77,7 @@ class ResultItem(BaseModel):
     rerank_score: float
     rrf_score: float | None = None
     source: str | None = None
-    matched_tokens: list | None = None
+    matched_tokens: dict | None = None
     file_name: str | None = None
     chapter: str | None = None
     article_no: str | None = None

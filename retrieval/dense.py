@@ -113,12 +113,10 @@ class DenseRetriever:
         for idx, score_dict in doc_scores.items():
             sources = list(score_dict.keys())
             output.append({
-                "score": max(score_dict.values()),
                 "scores": score_dict,
                 "source": sources[0] if len(sources) == 1 else "both",
-                "matched_tokens": [],
+                "matched_tokens": {},
                 **self.metadatas[idx],
             })
 
-        output.sort(key=lambda x: x["score"], reverse=True)
         return output

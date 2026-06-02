@@ -62,13 +62,16 @@ class TestBM25RetrieverSearch(unittest.TestCase):
     def test_result_structure(self):
         results = self.retriever.search("整车质量", top_k=1)
         r = results[0]
-        for key in ("score", "matched_tokens", "source", "file_name", "chapter", "article_no", "content"):
+        for key in ("scores", "matched_tokens", "source", "file_name", "chapter", "article_no", "content"):
             self.assertIn(key, r)
 
-    def test_scores_descending(self):
-        results = self.retriever.search("整车质量", top_k=10)
-        scores = [r["score"] for r in results]
-        self.assertEqual(scores, sorted(scores, reverse=True))
+    def test_scores_per_source(self):
+        results = self.retriever.search("整车质量", top_k=3)
+        for r in results:
+            self.assertIsInstance(r["scores"], dict)
+            for source, val in r["scores"].items():
+                self.assertIn(source, {"location", "content"})
+                self.assertGreater(val, 0)
 
     def test_top_k_larger_than_corpus(self):
         results = self.retriever.search("整车质量", top_k=100)
@@ -84,7 +87,7 @@ class TestBM25RetrieverSearch(unittest.TestCase):
         results = self.retriever.search("量子计算机", top_k=3)
         self.assertIsInstance(results, list)
         for r in results:
-            self.assertEqual(r["matched_tokens"], [])
+            self.assertEqual(r["matched_tokens"], {})
 
     def test_location_recall(self):
         results = self.retriever.search("第一章", top_k=3)

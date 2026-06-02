@@ -140,7 +140,8 @@ function renderResults(results) {{
     let bodyHtml;
     if (r.source === 'location') {{
       // 定位索引：高亮定位文本，正文仅展示
-      const locHtml = hlContent(r.loc_text, r.matched_tokens, r.source);
+      const locTokens = (r.matched_tokens && r.matched_tokens.location) || [];
+      const locHtml = hlContent(r.loc_text, locTokens, r.source);
       bodyHtml = `
         <div class="result-loc-highlight" style="margin-bottom:6px;padding:4px 8px;background:var(--loc-bg);border-radius:4px;">
           <span style="font-size:0.72em;color:var(--loc-accent);">命中定位：</span>${{locHtml}}
@@ -149,7 +150,8 @@ function renderResults(results) {{
         <button class="expand-btn" onclick="toggleContent('c-${{r._uid}}', this)">展开正文</button>`;
     }} else {{
       // 正文索引：高亮正文内容
-      const contentHtml = hlContent(r.content, r.matched_tokens, r.source);
+      const contTokens = (r.matched_tokens && r.matched_tokens.content) || [];
+      const contentHtml = hlContent(r.content, contTokens, r.source);
       bodyHtml = `
         <div class="result-content truncated" id="c-${{r._uid}}">${{contentHtml}}</div>
         <button class="expand-btn" onclick="toggleContent('c-${{r._uid}}', this)">展开</button>`;
@@ -180,7 +182,7 @@ const container = document.getElementById('container');
 for (const item of DATA) {{
   uid++;
   const allMatched = new Set();
-  item.results.forEach(r => r.matched_tokens.forEach(t => allMatched.add(t)));
+  item.results.forEach(r => Object.values(r.matched_tokens || {{}}).forEach(tokens => tokens.forEach(t => allMatched.add(t))));
   const resultsWithUid = item.results.map(r => {{ r._uid = uid + '_' + r._idx; return r; }});
 
   const card = document.createElement('div');
