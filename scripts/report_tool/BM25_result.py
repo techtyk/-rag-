@@ -233,7 +233,7 @@ def load_questions(path: str) -> list[dict]:
 
 def generate_report(num_questions: int = 10, top_k: int = 5, seed: int = 42) -> Path:
     docs_loc, docs_content, metadatas = parse_regulation(str(KB_PATH))
-    retriever = Retriever(
+    retriever = Retriever.build(
         docs_loc, docs_content, metadatas,
         config={
             "bm25_k1": BM25_K1, "bm25_b": BM25_B,

@@ -65,7 +65,7 @@ def run_model(model_cfg: dict, docs_loc, docs_content, metadatas,
         torch.cuda.empty_cache()
     t0 = time.time()
     try:
-        retriever = DenseRetriever(
+        retriever = DenseRetriever.build(
             docs_loc, docs_content, metadatas,
             model_path=model_path, device="cuda", batch_size=4,
         )

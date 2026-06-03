@@ -341,13 +341,13 @@ def main():
 
     # 构建检索器
     print("构建 BM25 索引...")
-    bm25 = BM25Retriever(
+    bm25 = BM25Retriever.build(
         docs_loc, docs_content, metadatas,
         k1=BM25_K1, b=BM25_B, backend=BM25_BACKEND,
     )
 
     print("构建 Dense 索引...")
-    dense = DenseRetriever(
+    dense = DenseRetriever.build(
         docs_loc, docs_content, metadatas,
         model_path=DENSE_MODEL_PATH, device=DENSE_DEVICE, batch_size=4,
     )

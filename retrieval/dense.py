@@ -10,36 +10,45 @@ from sentence_transformers import SentenceTransformer
 
 
 class DenseRetriever:
-    def __init__(self, docs_loc: List[str], docs_content: List[str],
-                 metadatas: List[Dict],
-                 model_path: str = "/home/moga/models/BGE-M3",
-                 device: str = "cuda",
-                 batch_size: int = 4,
-                 index_dir: Optional[str] = None):
+    def __init__(self, metadatas: List[Dict], model_path: str,
+                 loc_index, cont_index,
+                 device: str = "cuda", batch_size: int = 4):
         self.metadatas = metadatas
         self.model_path = model_path
         self.batch_size = batch_size
         self._device = device
-        self._loaded_from_disk = False
+        self.model = None
+        self.loc_index = loc_index
+        self.cont_index = cont_index
 
-        self._load_model()
-        self.loc_index = self._build_index(docs_loc, "定位")
-        self.cont_index = self._build_index(docs_content, "内容")
-
+    @classmethod
+    def build(cls, docs_loc: List[str], docs_content: List[str],
+              metadatas: List[Dict], model_path: str,
+              device: str = "cuda", batch_size: int = 4,
+              index_dir: Optional[str] = None) -> "DenseRetriever":
+        """从原始文档构建 Dense 索引。"""
+        obj = cls.__new__(cls)
+        obj.metadatas = metadatas
+        obj.model_path = model_path
+        obj.batch_size = batch_size
+        obj._device = device
+        obj.model = None
+        obj.loc_index = obj._build_index(docs_loc, "定位")
+        obj.cont_index = obj._build_index(docs_content, "内容")
         if index_dir:
-            self.save(index_dir)
+            obj.save(index_dir)
+        return obj
 
     @classmethod
     def load(cls, index_dir: str, metadatas: List[Dict],
              model_path: str = "", device: str = "cuda") -> "DenseRetriever":
-        """从磁盘加载已保存的 FAISS 索引，模型在首次 search 时按需加载到 CPU。"""
+        """从磁盘加载已保存的 FAISS 索引。"""
         obj = cls.__new__(cls)
         obj.metadatas = metadatas
         obj.model_path = model_path
         obj.batch_size = 4
-        obj._device = "cpu"
+        obj._device = device
         obj.model = None
-        obj._loaded_from_disk = True
 
         d = Path(index_dir) / "dense"
         obj.loc_index = faiss.read_index(str(d / "faiss_loc.index"))
@@ -56,7 +65,7 @@ class DenseRetriever:
         print(f"Dense: 模型加载完成，维度={self.dim}，耗时 {time.time()-t0:.1f}s")
 
     def _ensure_model(self):
-        """按需加载模型（用于从磁盘加载索引后的首次 search）。"""
+        """按需加载模型。"""
         if self.model is None:
             self._load_model()
 
@@ -69,6 +78,7 @@ class DenseRetriever:
         print(f"Dense FAISS 索引已保存到 {d}")
 
     def _build_index(self, texts: List[str], label: str):
+        self._ensure_model()
         print(f"Dense: 正在编码 {label}文本（{len(texts)} 条）...")
         t0 = time.time()
         max_seq = self.model[0].max_seq_length if hasattr(self.model[0], 'max_seq_length') else 512
@@ -88,12 +98,9 @@ class DenseRetriever:
     def search(self, query: str, top_k: int = 10) -> List[Dict]:
         self._ensure_model()
         k = min(top_k, len(self.metadatas))
-        # 如果模型是从磁盘加载（_loaded_from_disk），在 CPU 上编码 query
-        # 避免占用 GPU 显存影响 Reranker
-        encode_device = "cpu" if getattr(self, "_loaded_from_disk", False) else None
         query_emb = np.array(
             self.model.encode([query], normalize_embeddings=True,
-                              device=encode_device),
+                              device=self._device),
             dtype="float32",
         )
 

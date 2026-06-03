@@ -1,8 +1,8 @@
-from config import (KB_PATH, INDEX_DIR, BM25_K1, BM25_B, BM25_BACKEND, BM25_RECALL_K,
+from config import (INDEX_DIR, BM25_K1, BM25_B, BM25_BACKEND, BM25_RECALL_K,
                     RERANK_TOP_K, RERANKER_MODEL, RERANKER_MODEL_PATH, RERANKER_DEVICE,
+                    RERANKER_BATCH_SIZE,
                     DENSE_MODEL_PATH, DENSE_DEVICE, DENSE_BATCH_SIZE,
                     DENSE_RECALL_K, RRF_METHOD, RRF_K, RRF_2WAY_AXIS)
-from utils.doc_parser import parse_regulation
 from retrieval.retrieve import Retriever, _check_index_complete
 from rerank.reranker import RERANKER_REGISTRY
 
@@ -27,18 +27,12 @@ def _build_retriever_config():
 def rag_pipeline():
     config = _build_retriever_config()
 
-    # 优先从磁盘加载已持久化的索引（秒级启动）
     if config.get("index_dir") and _check_index_complete(config["index_dir"]):
         retriever = Retriever.load(config["index_dir"], config)
     else:
-        # 索引不存在，解析文档并从头构建
-        print("索引未找到，正在解析文档并构建索引...")
-        docs_index_loc, docs_index_content, metadatas = parse_regulation(str(KB_PATH))
-        print(f"共解析出 {len(metadatas)} 个条款")
-        if len(metadatas) == 0:
-            print("警告：未解析到任何条款，请检查 JSON 结构。")
-            return
-        retriever = Retriever(docs_index_loc, docs_index_content, metadatas, config=config)
+        print("错误：索引未找到。请先运行以下命令构建索引：")
+        print("  cd /home/moga/project/dense_training/app && python index.py")
+        return
 
     # 构建重排器（精排阶段）
     reranker_cls = RERANKER_REGISTRY[RERANKER_MODEL]
@@ -64,7 +58,7 @@ def rag_pipeline():
 
         # 阶段二：Reranker 精排
         documents = [r["content"] for r in candidates]
-        rerank_scores = reranker.rerank(query, documents)
+        rerank_scores = reranker.rerank(query, documents, batch_size=RERANKER_BATCH_SIZE)
         for r, s in zip(candidates, rerank_scores):
             r["rerank_score"] = s
         candidates.sort(key=lambda x: x["rerank_score"], reverse=True)

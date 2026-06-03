@@ -54,7 +54,7 @@ class TestE2EPipeline(unittest.TestCase):
     def setUpClass(cls):
         cls.docs_loc, cls.docs_content, cls.metadatas = parse_regulation(str(KB_PATH))
         # 索引持久化：首次构建并保存，后续直接加载
-        cls.retriever = Retriever(
+        cls.retriever = Retriever.build(
             cls.docs_loc, cls.docs_content, cls.metadatas,
             config={
                 "index_dir": str(INDEX_DIR),
@@ -177,7 +177,7 @@ class TestRetrieverOnly(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.docs_loc, cls.docs_content, cls.metadatas = parse_regulation(str(KB_PATH))
-        cls.retriever = Retriever(
+        cls.retriever = Retriever.build(
             cls.docs_loc, cls.docs_content, cls.metadatas,
             config={
                 "bm25_k1": BM25_K1,

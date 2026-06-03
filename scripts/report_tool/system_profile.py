@@ -18,9 +18,10 @@ from typing import List, Dict
 import torch
 
 from config import (KB_PATH, QA_PATH, INDEX_DIR, BM25_K1, BM25_B, BM25_BACKEND, BM25_RECALL_K,
-                    DENSE_MODEL_PATH, DENSE_DEVICE, DENSE_BATCH_SIZE,
-                    DENSE_RECALL_K, RRF_METHOD, RRF_K, RRF_2WAY_AXIS,
-                    RERANKER_MODEL, RERANKER_MODEL_PATH, RERANKER_DEVICE, RERANK_TOP_K)
+                    DENSE_MODEL_PATH, INDEX_DEVICE, INDEX_BATCH_SIZE,
+                    DENSE_RECALL_K, RRF_METHOD, RRF_K, RRF_TOP_K, RRF_2WAY_AXIS,
+                    RERANKER_MODEL, RERANKER_MODEL_PATH, RERANKER_DEVICE,
+                    RERANKER_BATCH_SIZE, RERANK_TOP_K)
 from utils.doc_parser import parse_regulation
 from retrieval.bm25 import BM25Retriever
 from retrieval.dense import DenseRetriever
@@ -64,11 +65,13 @@ def measure_stage(build_index: bool, num_questions: int, seed: int) -> dict:
             "bm25_k1": BM25_K1, "bm25_b": BM25_B, "bm25_backend": BM25_BACKEND,
             "bm25_recall_k": BM25_RECALL_K,
             "dense_model": Path(DENSE_MODEL_PATH).name if DENSE_MODEL_PATH else "",
-            "dense_recall_k": DENSE_RECALL_K, "dense_batch_size": DENSE_BATCH_SIZE,
+            "dense_recall_k": DENSE_RECALL_K, "dense_batch_size": INDEX_BATCH_SIZE,
             "rrf_method": RRF_METHOD, "rrf_k": RRF_K, "rrf_2way_axis": RRF_2WAY_AXIS,
             "reranker_model": RERANKER_MODEL,
             "reranker_model_name": Path(RERANKER_MODEL_PATH).name if RERANKER_MODEL_PATH else "",
+            "reranker_batch_size": RERANKER_BATCH_SIZE,
             "rerank_top_k": RERANK_TOP_K,
+            "rrf_top_k": RRF_TOP_K,
         },
         "stages": {},
         "queries": [],
@@ -86,7 +89,7 @@ def measure_stage(build_index: bool, num_questions: int, seed: int) -> dict:
     # ---- 阶段 2：索引构建 or 加载 ----
     if build_index:
         t0 = time.time()
-        bm25 = BM25Retriever(docs_loc, docs_content, metadatas,
+        bm25 = BM25Retriever.build(docs_loc, docs_content, metadatas,
                              k1=BM25_K1, b=BM25_B, backend=BM25_BACKEND)
         bm25_time = time.time() - t0
         profile["stages"]["bm25_build"] = {
@@ -96,9 +99,9 @@ def measure_stage(build_index: bool, num_questions: int, seed: int) -> dict:
 
         t0 = time.time()
         mem_before = _gpu_mem_mb()
-        dense = DenseRetriever(docs_loc, docs_content, metadatas,
-                               model_path=DENSE_MODEL_PATH, device=DENSE_DEVICE,
-                               batch_size=DENSE_BATCH_SIZE)
+        dense = DenseRetriever.build(docs_loc, docs_content, metadatas,
+                               model_path=DENSE_MODEL_PATH, device=INDEX_DEVICE,
+                               batch_size=INDEX_BATCH_SIZE)
         dense_time = time.time() - t0
         mem_after = _gpu_mem_mb()
         profile["stages"]["dense_build"] = {
@@ -118,8 +121,8 @@ def measure_stage(build_index: bool, num_questions: int, seed: int) -> dict:
         "bm25_k1": BM25_K1, "bm25_b": BM25_B, "bm25_backend": BM25_BACKEND,
         "bm25_recall_k": BM25_RECALL_K,
         "dense_model_path": DENSE_MODEL_PATH,
-        "dense_device": DENSE_DEVICE,
-        "dense_batch_size": DENSE_BATCH_SIZE,
+        "dense_device": INDEX_DEVICE,
+        "dense_batch_size": INDEX_BATCH_SIZE,
         "dense_recall_k": DENSE_RECALL_K,
         "rrf_method": RRF_METHOD, "rrf_k": RRF_K, "rrf_2way_axis": RRF_2WAY_AXIS,
     }
@@ -173,7 +176,7 @@ def measure_stage(build_index: bool, num_questions: int, seed: int) -> dict:
         documents = [r["content"] for r in fused]
         torch.cuda.reset_peak_memory_stats()
         t0 = time.time()
-        rerank_scores = reranker.rerank(query, documents, batch_size=2)
+        rerank_scores = reranker.rerank(query, documents, batch_size=RERANKER_BATCH_SIZE)
         rerank_t = time.time() - t0
         peak_mem = torch.cuda.max_memory_allocated() / 1024 / 1024 if torch.cuda.is_available() else 0
 
@@ -524,7 +527,9 @@ h2 {{ color:var(--accent); border-bottom:1px solid var(--border); padding:16px 0
     <tr><td>Dense batch_size</td><td>{cfg["dense_batch_size"]}</td></tr>
     <tr><td>RRF 模式</td><td>{cfg["rrf_method"]}, k={cfg["rrf_k"]}</td></tr>
     <tr><td>Reranker</td><td>{cfg["reranker_model_name"]}</td></tr>
-    <tr><td>Rerank Top-K</td><td>{cfg["rerank_top_k"]}</td></tr>
+    <tr><td>Reranker batch_size</td><td>{cfg["reranker_batch_size"]}</td></tr>
+    <tr><td>RRF Top-K（送入 Reranker）</td><td>{cfg["rrf_top_k"]}</td></tr>
+    <tr><td>Rerank Top-K（最终输出）</td><td>{cfg["rerank_top_k"]}</td></tr>
     <tr><td>索引目录</td><td>{INDEX_DIR}</td></tr>
   </tbody></table>
 </div>

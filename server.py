@@ -4,14 +4,15 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from config import (INDEX_DIR, KB_PATH, BM25_K1, BM25_B, BM25_BACKEND, BM25_RECALL_K,
+from config import (INDEX_DIR, BM25_K1, BM25_B, BM25_BACKEND, BM25_RECALL_K,
                     RERANK_TOP_K, RERANKER_MODEL, RERANKER_MODEL_PATH, RERANKER_DEVICE,
+                    RERANKER_BATCH_SIZE,
                     DENSE_MODEL_PATH, DENSE_DEVICE, DENSE_BATCH_SIZE,
                     DENSE_RECALL_K, RRF_METHOD, RRF_K, RRF_TOP_K, RRF_2WAY_AXIS,
                     SERVER_HOST, SERVER_PORT)
-from utils.doc_parser import parse_regulation
 from retrieval.retrieve import Retriever, _check_index_complete
 from rerank.reranker import RERANKER_REGISTRY
 
@@ -50,10 +51,8 @@ async def lifespan(app: FastAPI):
     if config.get("index_dir") and _check_index_complete(config["index_dir"]):
         retriever = Retriever.load(config["index_dir"], config)
     else:
-        print("索引未找到，正在解析文档并构建索引...")
-        docs_loc, docs_content, metadatas = parse_regulation(str(KB_PATH))
-        print(f"共解析出 {len(metadatas)} 个条款")
-        retriever = Retriever(docs_loc, docs_content, metadatas, config=config)
+        print("错误：索引未找到。请先运行 python index.py 构建索引。")
+        retriever = None
 
     reranker_cls = RERANKER_REGISTRY[RERANKER_MODEL]
     reranker = reranker_cls(RERANKER_MODEL_PATH, device=RERANKER_DEVICE)
@@ -109,6 +108,12 @@ async def health():
 
 @app.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest):
+    if retriever is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "索引未就绪，请先运行 python index.py 构建索引"},
+        )
+
     t0 = time.time()
 
     top_k = req.top_k or RERANK_TOP_K
@@ -119,7 +124,7 @@ async def query(req: QueryRequest):
 
     # 阶段二：Reranker 精排
     documents = [r["content"] for r in candidates]
-    rerank_scores = reranker.rerank(req.query, documents)
+    rerank_scores = reranker.rerank(req.query, documents, batch_size=RERANKER_BATCH_SIZE)
     for r, s in zip(candidates, rerank_scores):
         r["rerank_score"] = s
     candidates.sort(key=lambda x: x["rerank_score"], reverse=True)

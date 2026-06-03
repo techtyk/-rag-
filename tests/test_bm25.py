@@ -28,14 +28,14 @@ METADATAS = [
 
 class TestBM25RetrieverBuild(unittest.TestCase):
     def test_build_with_numpy(self):
-        retriever = BM25Retriever(DOCS_LOC, DOCS_CONTENT, METADATAS, backend="numpy")
+        retriever = BM25Retriever.build(DOCS_LOC, DOCS_CONTENT, METADATAS, backend="numpy")
         self.assertIsNotNone(retriever.retriever_loc)
         self.assertIsNotNone(retriever.retriever_content)
         self.assertEqual(len(retriever.tokenized_loc), 5)
         self.assertEqual(len(retriever.tokenized_content), 5)
 
     def test_fallback_on_bad_backend(self):
-        retriever = BM25Retriever(DOCS_LOC, DOCS_CONTENT, METADATAS, backend="nonexistent")
+        retriever = BM25Retriever.build(DOCS_LOC, DOCS_CONTENT, METADATAS, backend="nonexistent")
         self.assertIsNotNone(retriever.retriever_loc)
         self.assertIsNotNone(retriever.retriever_content)
 
@@ -43,7 +43,7 @@ class TestBM25RetrieverBuild(unittest.TestCase):
 class TestBM25RetrieverSearch(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.retriever = BM25Retriever(DOCS_LOC, DOCS_CONTENT, METADATAS, backend="numpy")
+        cls.retriever = BM25Retriever.build(DOCS_LOC, DOCS_CONTENT, METADATAS, backend="numpy")
 
     def test_dual_recall_dedup(self):
         results = self.retriever.search("第一章", top_k=5)

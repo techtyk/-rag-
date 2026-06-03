@@ -7,17 +7,29 @@ from utils.tokenizer import tokenize_for_doc, tokenize_for_query
 
 
 class BM25Retriever:
-    def __init__(self, docs_loc: List[str], docs_content: List[str],
-                 metadatas: List[Dict],
-                 k1: float = 1.5, b: float = 0.75, backend: str = "numma",
-                 index_dir: Optional[str] = None):
+    def __init__(self, metadatas: List[Dict], retriever_loc, retriever_content,
+                 tokenized_loc: List[List[str]], tokenized_content: List[List[str]]):
         self.metadatas = metadatas
-        self.tokenized_loc = [tokenize_for_doc(doc) for doc in docs_loc]
-        self.tokenized_content = [tokenize_for_doc(doc) for doc in docs_content]
-        self.retriever_loc = self._build_index(self.tokenized_loc, k1, b, backend, "定位")
-        self.retriever_content = self._build_index(self.tokenized_content, k1, b, backend, "正文")
+        self.retriever_loc = retriever_loc
+        self.retriever_content = retriever_content
+        self.tokenized_loc = tokenized_loc
+        self.tokenized_content = tokenized_content
+
+    @classmethod
+    def build(cls, docs_loc: List[str], docs_content: List[str],
+              metadatas: List[Dict],
+              k1: float = 1.5, b: float = 0.75, backend: str = "numpy",
+              index_dir: Optional[str] = None) -> "BM25Retriever":
+        """从原始文档构建 BM25 索引。"""
+        tokenized_loc = [tokenize_for_doc(doc) for doc in docs_loc]
+        tokenized_content = [tokenize_for_doc(doc) for doc in docs_content]
+        retriever_loc = BM25Retriever._build_index(tokenized_loc, k1, b, backend, "定位")
+        retriever_content = BM25Retriever._build_index(tokenized_content, k1, b, backend, "正文")
+        obj = cls(metadatas, retriever_loc, retriever_content,
+                  tokenized_loc, tokenized_content)
         if index_dir:
-            self.save(index_dir)
+            obj.save(index_dir)
+        return obj
 
     @classmethod
     def load(cls, index_dir: str, metadatas: List[Dict]) -> "BM25Retriever":
@@ -44,7 +56,8 @@ class BM25Retriever:
             json.dumps(self.tokenized_content, ensure_ascii=False), encoding="utf-8")
         print(f"BM25 索引已保存到 {d}")
 
-    def _build_index(self, tokenized_corpus: List[List[str]],
+    @staticmethod
+    def _build_index(tokenized_corpus: List[List[str]],
                      k1: float, b: float, backend: str, label: str) -> bm25s.BM25:
         try:
             retriever = bm25s.BM25(method="lucene", k1=k1, b=b, backend=backend)

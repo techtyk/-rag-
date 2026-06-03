@@ -23,6 +23,7 @@ Reranker 精排（Qwen3-Reranker）
 ```
 app/
 ├── config.py              # 全局配置（模型路径、超参数）
+├── index.py               # 索引构建入口（独立于 main.py）
 ├── main.py                # 交互式 Pipeline 入口
 ├── server.py              # FastAPI 服务入口
 ├── data/
@@ -67,6 +68,18 @@ conda env create -f conda_envs/environment.yml
 
 ## 运行
 
+### 构建索引
+
+首次使用前需要先构建索引（约 1 分钟）：
+
+```bash
+cd /home/moga/project/dense_training/app
+conda activate retrieval
+python index.py
+```
+
+索引保存在 `artifacts/index/` 下。如需重建，删除该目录后重新运行即可。
+
 ### 交互式查询
 
 ```bash
@@ -74,7 +87,7 @@ cd /home/moga/project/dense_training/app
 conda run -n retrieval python main.py
 ```
 
-首次运行会解析文档并构建索引（约 5 分钟），后续启动直接加载已有索引（约 30 秒）。
+启动时从磁盘加载已有索引（约 30 秒）。如索引不存在，会提示先运行 `python index.py`。
 
 ### API 服务
 
@@ -86,7 +99,7 @@ conda activate retrieval
 python server.py
 ```
 
-服务启动时会加载模型（首次构建索引约 5 分钟，后续约 30 秒），就绪后监听 `0.0.0.0:18400`（端口可在 `config.py` 的 `SERVER_PORT` 中修改）。
+服务启动时从磁盘加载索引和模型（约 30 秒），就绪后监听 `0.0.0.0:18400`（端口可在 `config.py` 的 `SERVER_PORT` 中修改）。如索引不存在，`/query` 返回 503,需要先建立索引。
 
 **端点：**
 
@@ -198,13 +211,20 @@ conda run -n retrieval python -m scripts.report_tool.system_profile
 | `BM25_BACKEND` | `"numpy"` | BM25 计算后端 |
 | `BM25_RECALL_K` | 20 | BM25 每路（定位/内容）最大召回条数 |
 
+### 索引构建
+
+| 配置项 | 默认值 | 说明 |
+|--------|-------|------|
+| `INDEX_DEVICE` | `"cuda"` | 构建索引时 Embedding 模型使用的设备 |
+| `INDEX_BATCH_SIZE` | `4` | 构建索引时编码批大小；内容文本序列较长，过大会 OOM |
+
 ### Dense 召回
 
 | 配置项 | 默认值 | 说明 |
 |--------|-------|------|
 | `DENSE_MODEL_PATH` | `/home/moga/models/embedding/Qwen3-Embedding-0.6B` | Embedding 模型路径 |
-| `DENSE_DEVICE` | `"cuda"` | 推理设备 |
-| `DENSE_BATCH_SIZE` | 32 | 编码批大小 |
+| `DENSE_DEVICE` | `"cuda"` | 检索时 query 编码设备，可选 `"cpu"` 但速度会显著下降 |
+| `DENSE_BATCH_SIZE` | 4 | 检索时编码批大小 |
 | `DENSE_RECALL_K` | 20 | Dense 每路（定位/内容）最大召回条数 |
 
 ### RRF 融合
