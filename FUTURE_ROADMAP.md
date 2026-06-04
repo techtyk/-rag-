@@ -146,7 +146,7 @@ Reranker 的排序能力替代了原本在 Retrieval 阶段做分数加权的需
 
 > **元数据继承：** 切分产生的每个子 chunk 作为独立文档进入索引，继承原文档的元数据（文件名、章节、条款号），新增 chunk 序号字段以标识来源。
 
-### 4.2 Batch Size 调优与 Profile 测量（待执行，依赖 4.1）
+### 4.2 Batch Size 调优与 Profile 测量（已完成）
 
 **前置条件**：4.1 完成截断策略实施并重建索引后，才能执行本步骤。
 
@@ -176,8 +176,60 @@ GPU 峰值显存：allocated=3721MB, reserved=4450MB / total=11874MB（利用率
 注：截断后 Rerank 阶段耗时预计大幅下降（无长文档 padding），batch_size 也可提升。
 
 
+## 5. 加入QA-rag（已完成）
 
-## 5. 长期：端侧部署与优化
+### 5.0 设计决策
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 架构 | 独立 `QARetriever` 类 | 现有 Retriever 与双索引/4元组 doc_key 紧耦合，强行扩展引入回归风险 |
+| 索引 | 单问题索引（非双路） | QA 只需匹配问题文本，无需定位/内容分离 |
+| 融合 | 2 路 RRF（BM25 + Dense） | 单索引×2路=2路，不需要4路 |
+| Dense 模型 | 共享模型实例，query 只编码一次 | QARetriever 持有独立 FAISS 索引，但接受外部传入的 SentenceTransformer 实例，节省 ~18ms 延迟和 GPU 显存 |
+| Rerank | 法规+QA 候选合并为单个 batch 一次推理 | 充分利用 GPU 并行，减少时延（rerank 占总耗时 ~89%） |
+| 截断 | `QA_RRF_TOP_K=5` → Rerank → `QA_RERANK_TOP_K=3` → 阈值过滤 | 允许多个匹配答案返回给下游 |
+| 阈值 | `QA_SIMILARITY_THRESHOLD=0.3` | 低于阈值的 rerank 结果被丢弃；设为 `float('-inf')` 则始终返回 |
+| 数据 | 独立 Excel 文件 `qa_knowledgebase_sample.xlsx` | 数据与代码分离，上线时替换文件即可 |
+| API | 统一端点 `/query`，响应新增 `qa_results` 字段 | 向后兼容，对下游最方便 |
+
+### 5.1 数据准备
+
+- `data/qa_knowledgebase_sample.xlsx`：5 条交警 QA（从原始 720 条 Excel 随机取样）+ 5 条无关测试 QA，共 10 条
+- 原始数据 `policeKnowledgeAnswer.xlsx`（720 条）保留用于评估，不用于建索引，避免测试数据污染
+- `app/utils/qa_data_loader.py`：从 Excel 读取 QA 数据
+
+### 5.2 QA 检索器
+
+- `app/retrieval/qa_retrieve.py`：`QARetriever` 类
+- 单问题索引上的 BM25 + Dense，2 路 RRF 融合
+- 支持共享模型实例（`shared_model` 参数）和预编码 query embedding（`query_emb` 参数）
+- 索引持久化到 `artifacts/qa_index/`
+
+### 5.3 API 和 CLI 集成
+
+- `server.py`：`/query` 端点新增 `qa_results` 字段（`list[QAResultItem]`）
+  - 法规+QA 候选合并为一个 batch 送 Reranker 一次推理
+  - `RERANKER_BATCH_SIZE` 调整为 20 以覆盖法规 15 + QA 5
+- `main.py`：交互循环中展示 QA 匹配结果及置信度
+- `index.py`：新增 `build_qa_index()` 函数，支持 `--qa`/`--reg` 参数
+
+### 5.4 配置参数（`config.py`）
+
+```python
+QA_DATA_PATH          # QA 数据 Excel 路径
+QA_INDEX_DIR          # QA 索引目录 (artifacts/qa_index/)
+QA_BM25_K1/B/BACKEND  # BM25 参数（独立于法规）
+QA_BM25_RECALL_K = 10
+QA_DENSE_RECALL_K = 10
+QA_RRF_K = 60
+QA_RRF_TOP_K = 5      # RRF 后截断，送 Reranker 的候选数
+QA_RERANK_TOP_K = 3    # Rerank 后返回给下游的最多条数
+QA_SIMILARITY_THRESHOLD = 0.3  # rerank 低于此阈值的结果被丢弃
+```
+
+约束：`RRF_TOP_K(法规15) + QA_RRF_TOP_K(5) ≤ RERANKER_BATCH_SIZE(20)`
+
+## 6. 长期：端侧部署与优化
 
 - 模型量化（如 ONNX / TensorRT）以适应端侧算力
 - 查询缓存与批量推理优化
