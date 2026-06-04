@@ -15,7 +15,8 @@ from config import (INDEX_DIR, BM25_K1, BM25_B, BM25_BACKEND, BM25_RECALL_K,
                     SERVER_HOST, SERVER_PORT,
                     QA_INDEX_DIR, QA_BM25_K1, QA_BM25_B, QA_BM25_BACKEND, QA_BM25_RECALL_K,
                     QA_INDEX_DEVICE, QA_INDEX_BATCH_SIZE, QA_DENSE_RECALL_K,
-                    QA_RRF_K, QA_RRF_TOP_K, QA_RERANK_TOP_K, QA_SIMILARITY_THRESHOLD)
+                    QA_RRF_K, QA_RRF_TOP_K, QA_RERANK_TOP_K, QA_SIMILARITY_THRESHOLD,
+                    QA_RERANKER_BATCH_SIZE)
 from retrieval.retrieve import Retriever, _check_index_complete
 from retrieval.qa_retrieve import QARetriever, _check_qa_index_complete
 from rerank.reranker import RERANKER_REGISTRY
@@ -79,6 +80,7 @@ async def lifespan(app: FastAPI):
     # 加载 QA 索引，共享法规 Dense 模型
     shared_model = None
     if retriever is not None and retriever.dense is not None:
+        retriever.dense._ensure_model()
         shared_model = retriever.dense.model
     if qa_config.get("index_dir") and _check_qa_index_complete(qa_config["index_dir"]):
         qa_retriever = QARetriever.load(qa_config["index_dir"], qa_config,
@@ -176,24 +178,24 @@ async def query(req: QueryRequest):
         qa_candidates = qa_retriever.retrieve(req.query, query_emb=query_emb)
     qa_count = len(qa_candidates)
 
-    # 阶段二：合并 Rerank（法规 + QA 拼成一个 batch 一次推理）
-    all_docs = [r["content"] for r in reg_candidates] + [q["question"] for q in qa_candidates]
+    # 阶段二：Rerank（法规和 QA 分别独立精排）
+    # QA 问题文本极短（~20-40字符），与法规内容（~数百-数千字符）长度差异过大，
+    # 合并 batch 会导致 QA 被无效 pad 到法规长度，故分开精排
     qa_results_out = []
 
-    if all_docs:
-        all_scores = reranker.rerank(req.query, all_docs, batch_size=RERANKER_BATCH_SIZE)
-
-        # 拆分分数回法规组和 QA 组
-        reg_scores = all_scores[:len(reg_candidates)]
-        qa_scores = all_scores[len(reg_candidates):]
-
-        # 法规组：赋分 + 排序 + 截断
+    # 法规 Rerank
+    reg_docs = [r["content"] for r in reg_candidates]
+    if reg_docs:
+        reg_scores = reranker.rerank(req.query, reg_docs, batch_size=RERANKER_BATCH_SIZE)
         for r, s in zip(reg_candidates, reg_scores):
             r["rerank_score"] = s
-        reg_candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
-        display = reg_candidates[:top_k]
+    reg_candidates.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
+    display = reg_candidates[:top_k]
 
-        # QA 组：赋分 + 排序 + 截断 + 阈值过滤
+    # QA Rerank
+    qa_docs = [q["question"] for q in qa_candidates]
+    if qa_docs:
+        qa_scores = reranker.rerank(req.query, qa_docs, batch_size=QA_RERANKER_BATCH_SIZE)
         for c, s in zip(qa_candidates, qa_scores):
             c["rerank_score"] = s
         qa_candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
@@ -208,8 +210,6 @@ async def query(req: QueryRequest):
             for c in qa_top
             if c["rerank_score"] >= QA_SIMILARITY_THRESHOLD
         ]
-    else:
-        display = reg_candidates
 
     elapsed_ms = (time.time() - t0) * 1000
 

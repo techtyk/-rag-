@@ -7,7 +7,8 @@ from config import (INDEX_DIR, BM25_K1, BM25_B, BM25_BACKEND, BM25_RECALL_K,
                     DENSE_RECALL_K, RRF_METHOD, RRF_K, RRF_2WAY_AXIS,
                     QA_INDEX_DIR, QA_BM25_K1, QA_BM25_B, QA_BM25_BACKEND, QA_BM25_RECALL_K,
                     QA_INDEX_DEVICE, QA_INDEX_BATCH_SIZE, QA_DENSE_RECALL_K,
-                    QA_RRF_K, QA_RRF_TOP_K, QA_RERANK_TOP_K, QA_SIMILARITY_THRESHOLD)
+                    QA_RRF_K, QA_RRF_TOP_K, QA_RERANK_TOP_K, QA_SIMILARITY_THRESHOLD,
+                    QA_RERANKER_BATCH_SIZE)
 from retrieval.retrieve import Retriever, _check_index_complete
 from retrieval.qa_retrieve import QARetriever, _check_qa_index_complete
 from rerank.reranker import RERANKER_REGISTRY
@@ -59,6 +60,8 @@ def rag_pipeline():
 
     # 加载 QA 索引，共享法规 Dense 模型
     qa_retriever = None
+    if retriever.dense:
+        retriever.dense._ensure_model()
     shared_model = retriever.dense.model if retriever.dense else None
     if qa_config.get("index_dir") and _check_qa_index_complete(qa_config["index_dir"]):
         qa_retriever = QARetriever.load(qa_config["index_dir"], qa_config,
@@ -97,29 +100,28 @@ def rag_pipeline():
                 dtype="float32")
             qa_candidates = qa_retriever.retrieve(query, query_emb=query_emb)
 
-        # 阶段二：合并 Rerank
-        all_docs = [r["content"] for r in reg_candidates] + [q["question"] for q in qa_candidates]
-
-        if not all_docs:
+        # 阶段二：Rerank（法规和 QA 分别独立精排）
+        # QA 问题文本极短，与法规内容长度差异过大，合并 batch 会导致无效 padding，故分开精排
+        reg_docs = [r["content"] for r in reg_candidates]
+        if not reg_docs and not qa_candidates:
             print("未召回任何结果。")
             continue
 
-        all_scores = reranker.rerank(query, all_docs, batch_size=RERANKER_BATCH_SIZE)
-
-        # 拆分分数回法规组和 QA 组
-        reg_scores = all_scores[:len(reg_candidates)]
-        qa_scores = all_scores[len(reg_candidates):]
-
-        # 法规组
-        for r, s in zip(reg_candidates, reg_scores):
-            r["rerank_score"] = s
-        reg_candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
+        # 法规 Rerank
+        if reg_docs:
+            reg_scores = reranker.rerank(query, reg_docs, batch_size=RERANKER_BATCH_SIZE)
+            for r, s in zip(reg_candidates, reg_scores):
+                r["rerank_score"] = s
+        reg_candidates.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
         display_results = reg_candidates[:RERANK_TOP_K]
 
-        # QA 组
-        for c, s in zip(qa_candidates, qa_scores):
-            c["rerank_score"] = s
-        qa_candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
+        # QA Rerank
+        qa_docs = [q["question"] for q in qa_candidates]
+        if qa_docs:
+            qa_scores = reranker.rerank(query, qa_docs, batch_size=QA_RERANKER_BATCH_SIZE)
+            for c, s in zip(qa_candidates, qa_scores):
+                c["rerank_score"] = s
+            qa_candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
 
         # 展示法规结果
         print(f"\n查询：「{query}」法规召回 {len(reg_candidates)} 条，精排展示前 {len(display_results)} 条")

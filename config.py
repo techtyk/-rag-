@@ -63,6 +63,8 @@ QA_RRF_TOP_K = 5            # RRF 后截断，送 Reranker 的候选数
 
 QA_RERANK_TOP_K = 2          # Rerank 后返回给下游的最多条数
 
+QA_RERANKER_BATCH_SIZE = 5  # QA 精排批大小；QA 问题文本极短（~20-40字符），与法规内容（~数百-数千字符）长度差异过大，合并 batch 会导致 QA 被无效 pad 到法规长度，显存浪费且无时延收益，故法规和 QA 分别独立精排
+
 QA_SIMILARITY_THRESHOLD = 0.5  # rerank 低于此阈值的结果被丢弃；设为 float('-inf') 则始终返回
 
 
@@ -73,7 +75,7 @@ RERANKER_MODEL = "qwen3"
 RERANKER_MODEL_PATH = "/home/moga/models/reranker/Qwen3-Reranker-0.6B"
 # 备选模型路径: /home/moga/models/reranker/bge-reranker-v2-m3
 RERANKER_DEVICE = "cuda"
-RERANKER_BATCH_SIZE = 15  # 精排批大小；需覆盖 RRF_TOP_K(法规10) + QA_RRF_TOP_K(5) = 15，确保合并 batch 一次推理完成；QA 问题短（~20-40字符），额外 padding 开销极小
+RERANKER_BATCH_SIZE = 15  # 法规精排批大小；需 ≥ RRF_TOP_K，确保法规候选一次推理完成
 
 # Reranker 精排后最终输出条数
 RERANK_TOP_K = 5 # 可以等于RERANKER_BATCH_SIZE，由下游决定保留哪些chunk注入LLM
